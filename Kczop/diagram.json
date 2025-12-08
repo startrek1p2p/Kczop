@@ -1,0 +1,198 @@
+{
+    "version": 1,
+    "author": "Przemek Dajcz",
+    "editor": "wokwi",
+    "parts": [
+        {
+            "type": "wokwi-esp32-devkit-v1",
+            "id": "esp",
+            "top": 0,
+            "left": 0,
+            "attrs": {}
+        },
+        {
+            "type": "wokwi-lcd1602",
+            "id": "lcd1",
+            "top": -60.8,
+            "left": 197.6,
+            "attrs": {
+                "pins": "i2c"
+            }
+        },
+        {
+            "type": "wokwi-dht22",
+            "id": "dht1",
+            "top": 51,
+            "left": 219.9,
+            "rotate": 90,
+            "attrs": {}
+        },
+        {
+            "type": "wokwi-microsd-card",
+            "id": "sd1",
+            "top": -105.37,
+            "left": 9.67,
+            "attrs": {}
+        },
+        {
+            "type": "wokwi-buzzer",
+            "id": "bz1",
+            "top": 156,
+            "left": 155.4,
+            "rotate": 90,
+            "attrs": {
+                "volume": "0.1"
+            }
+        }
+    ],
+    "connections": [
+        [
+            "esp:TX",
+            "$serialMonitor:RX",
+            "",
+            []
+        ],
+        [
+            "esp:RX",
+            "$serialMonitor:TX",
+            "",
+            []
+        ],
+        [
+            "lcd1:SDA",
+            "esp:D21",
+            "green",
+            [
+                "h-76.8",
+                "v77"
+            ]
+        ],
+        [
+            "lcd1:SCL",
+            "esp:D22",
+            "green",
+            [
+                "h-86.4",
+                "v29.1"
+            ]
+        ],
+        [
+            "sd1:CS",
+            "esp:D5",
+            "green",
+            [
+                "h48",
+                "v9.66"
+            ]
+        ],
+        [
+            "sd1:DI",
+            "esp:D23",
+            "green",
+            [
+                "h57.6",
+                "v76.71"
+            ]
+        ],
+        [
+            "sd1:SCK",
+            "esp:D18",
+            "green",
+            [
+                "h38.4",
+                "v153.59"
+            ]
+        ],
+        [
+            "sd1:DO",
+            "esp:D19",
+            "green",
+            [
+                "h28.8",
+                "v163.31"
+            ]
+        ],
+        [
+            "sd1:GND",
+            "lcd1:GND",
+            "black",
+            [
+                "h96",
+                "v48.11"
+            ]
+        ],
+        [
+            "sd1:VCC",
+            "lcd1:VCC",
+            "red",
+            [
+                "h86.4",
+                "v38.54"
+            ]
+        ],
+        [
+            "dht1:VCC",
+            "lcd1:VCC",
+            "red",
+            [
+                "h-19.2",
+                "v-115.2"
+            ]
+        ],
+        [
+            "dht1:GND",
+            "lcd1:GND",
+            "black",
+            [
+                "h-28.8",
+                "v-153.6"
+            ]
+        ],
+        [
+            "esp:GND.1",
+            "dht1:GND",
+            "black",
+            [
+                "h0"
+            ]
+        ],
+        [
+            "dht1:VCC",
+            "esp:VIN",
+            "red",
+            [
+                "h-76.8",
+                "v76.8",
+                "h-115.2"
+            ]
+        ],
+        [
+            "bz1:1",
+            "esp:GND.1",
+            "black",
+            [
+                "h-16.5",
+                "v-33.9"
+            ]
+        ],
+        [
+            "dht1:SDA",
+            "esp:D15",
+            "green",
+            [
+                "h-38.4",
+                "v38.5"
+            ]
+        ],
+        [
+            "esp:D14",
+            "bz1:2",
+            "green",
+            [
+                "h-33.8",
+                "v4.8"
+            ]
+        ]
+    ],
+    "dependencies": {}
+}
