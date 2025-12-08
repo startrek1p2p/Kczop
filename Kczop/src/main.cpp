@@ -1,33 +1,213 @@
 #include <Arduino.h>
 #include <Wire.h>
+#include <SPI.h>
+#include <SD.h>
 #include <LiquidCrystal_I2C.h>
 #include "DHT.h"
+#include <WiFi.h>
+#include <time.h> // *** NTP ***
+
+// Insert your network credentials
+#define WIFI_SSID "Wokwi-GUEST"
+#define WIFI_PASSWORD ""
 
 // --- Konfiguracja DHT22 ---
-#define DHTPIN 15      // pin danych czujnika DHT22
-#define DHTTYPE DHT22  // typ czujnika
+#define DHTPIN 15     // pin danych czujnika DHT22
+#define DHTTYPE DHT22 // typ czujnika
 
 DHT dht(DHTPIN, DHTTYPE);
 
 // --- Konfiguracja LCD I2C ---
-#define LCD_ADDR 0x27  // jeśli nie działa, spróbuj 0x3F
+#define LCD_ADDR 0x27 // jeśli nie działa, spróbuj 0x3F
 #define LCD_COLS 16
 #define LCD_ROWS 2
 
 LiquidCrystal_I2C lcd(LCD_ADDR, LCD_COLS, LCD_ROWS);
 
-// --- Opcjonalnie: piny I2C dla ESP32 (domyślnie SDA=21, SCL=22) ---
-// Jeśli masz podłączone SDA/SCL inaczej, zmień tutaj i odkomentuj Wire.begin():
-// #define I2C_SDA 21
-// #define I2C_SCL 22
+// --- Konfiguracja SD (SPI) ---
+// CS  -> GPIO 5
+// DI  -> GPIO 23 (MOSI)
+// SCK -> GPIO 18
+// DO  -> GPIO 19 (MISO)
+#define SD_CS_PIN 5
+#define SD_SCK_PIN 18
+#define SD_MISO_PIN 19
+#define SD_MOSI_PIN 23
 
-void setup() {
+const char *SD_FILE_NAME = "/pomiary.txt";
+
+// --- Konfiguracja NTP / czasu lokalnego (Polska) ---
+// *** NTP ***
+const char *ntpServer = "pool.ntp.org";
+const long gmtOffset_sec = 3600;  // UTC+1
+const int daylightOffset_sec = 0; // możesz ustawić 3600 jeśli chcesz na stałe +2h
+
+void initTime() // *** NTP ***
+{
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+
+  Serial.print("Synchronizacja czasu z NTP");
+  struct tm timeinfo;
+  int retry = 0;
+  const int maxRetry = 10;
+
+  while (!getLocalTime(&timeinfo) && retry < maxRetry)
+  {
+    Serial.print(".");
+    retry++;
+    delay(500);
+  }
+  Serial.println();
+
+  if (!getLocalTime(&timeinfo))
+  {
+    Serial.println("Blad pobrania czasu z NTP!");
+  }
+  else
+  {
+    Serial.print("Czas zsynchronizowany: ");
+    Serial.printf("%04d-%02d-%02d %02d:%02d:%02d\n",
+                  timeinfo.tm_year + 1900,
+                  timeinfo.tm_mon + 1,
+                  timeinfo.tm_mday,
+                  timeinfo.tm_hour,
+                  timeinfo.tm_min,
+                  timeinfo.tm_sec);
+  }
+}
+
+void initSD()
+{
+  // Inicjalizacja SPI z konkretnymi pinami
+  SPI.begin(SD_SCK_PIN, SD_MISO_PIN, SD_MOSI_PIN, SD_CS_PIN);
+
+  if (!SD.begin(SD_CS_PIN))
+  {
+    Serial.println("Blad inicjalizacji karty SD!");
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Blad karty SD");
+    delay(2000);
+  }
+  else
+  {
+    Serial.println("Karta SD OK.");
+
+    // Jeśli plik nie istnieje – utwórz go i dodaj nagłówek
+    if (!SD.exists(SD_FILE_NAME))
+    {
+      File file = SD.open(SD_FILE_NAME, FILE_WRITE);
+      if (file)
+      {
+        // zaktualizowany nagłówek z datą
+        file.println("czas- data, godzina, minuta, sekunda, Temperatura[C], Wilgotnosc[%]");
+        file.close();
+        Serial.println("Utworzono plik pomiary.txt z naglowkiem.");
+      }
+      else
+      {
+        Serial.println("Nie udalo sie utworzyc pliku pomiary.txt");
+      }
+    }
+    else
+    {
+      Serial.println("Plik pomiary.txt juz istnieje.");
+    }
+  }
+}
+
+void logToSD(float temperature, float humidity)
+{
+  String line;
+
+  // *** NTP: proba pobrania aktualnego czasu ***
+  struct tm timeinfo;
+  if (getLocalTime(&timeinfo))
+  {
+    char buf[80];
+    // format: czas- data,godzina,minuta,sekunda
+    snprintf(buf, sizeof(buf),
+             "czas- data:%04d-%02d-%02d,godzina:%02d,minuta:%02d,sekunda:%02d",
+             timeinfo.tm_year + 1900,
+             timeinfo.tm_mon + 1,
+             timeinfo.tm_mday,
+             timeinfo.tm_hour,
+             timeinfo.tm_min,
+             timeinfo.tm_sec);
+    line = String(buf);
+  }
+  else
+  {
+    // fallback jeśli NTP nie zadziałało – czas od startu
+    unsigned long totalSeconds = millis() / 1000;
+    unsigned long seconds = totalSeconds % 60;
+    unsigned long minutes = (totalSeconds / 60) % 60;
+    unsigned long hours = (totalSeconds / 3600) % 24;
+    unsigned long days = totalSeconds / 86400;
+
+    line = "czas- dzien:";
+    line += days;
+    line += ",godzina:";
+    if (hours < 10)
+      line += "0";
+    line += hours;
+    line += ",minuta:";
+    if (minutes < 10)
+      line += "0";
+    line += minutes;
+    line += ",sekunda:";
+    if (seconds < 10)
+      line += "0";
+    line += seconds;
+  }
+
+  line += ", Temperatura:";
+  line += String(temperature, 1);
+  line += ", Wilgotnosc:";
+  line += String(humidity, 1);
+
+  File file = SD.open(SD_FILE_NAME, FILE_APPEND);
+  if (!file)
+  {
+    // Jesli FILE_APPEND zawiedzie (np. plik nie istnieje) – sprobuj FILE_WRITE
+    file = SD.open(SD_FILE_NAME, FILE_WRITE);
+  }
+
+  if (file)
+  {
+    file.println(line);
+    file.close();
+    Serial.println("Zapisano na SD: " + line);
+  }
+  else
+  {
+    Serial.println("Blad otwarcia pliku do zapisu na SD!");
+  }
+}
+
+void setup()
+{
   // Port szeregowy
   Serial.begin(115200);
   delay(500);
 
+  // Wi-Fi
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Connecting to Wi-Fi");
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    Serial.print(".");
+    delay(300);
+  }
+  Serial.println();
+  Serial.print("Connected with IP: ");
+  Serial.println(WiFi.localIP());
+  Serial.println();
+
+  // *** NTP: inicjalizacja czasu po polaczeniu Wi-Fi ***
+  initTime();
+
   // Inicjalizacja I2C
-  // Wire.begin(I2C_SDA, I2C_SCL);  // jeśli chcesz jawnie ustawić piny
   Wire.begin(); // domyślne piny ESP32: SDA=21, SCL=22
 
   // Inicjalizacja LCD
@@ -43,17 +223,21 @@ void setup() {
 
   // Inicjalizacja DHT
   dht.begin();
-
   Serial.println("Start pomiaru z DHT22.");
+
+  // Inicjalizacja karty SD
+  initSD();
 }
 
-void loop() {
+void loop()
+{
   // Odczyt z czujnika
   float humidity = dht.readHumidity();
   float temperature = dht.readTemperature(); // domyślnie *C
 
   // Sprawdzenie czy odczyt sie udal
-  if (isnan(humidity) || isnan(temperature)) {
+  if (isnan(humidity) || isnan(temperature))
+  {
     Serial.println("Blad odczytu z DHT22!");
 
     lcd.clear();
@@ -61,8 +245,9 @@ void loop() {
     lcd.print("Blad odczytu");
     lcd.setCursor(0, 1);
     lcd.print("z DHT22...");
-
-  } else {
+  }
+  else
+  {
     // Wyswietlanie na porcie szeregowym
     Serial.print("Temperatura: ");
     Serial.print(temperature, 1);
@@ -85,6 +270,9 @@ void loop() {
     lcd.print("H:");
     lcd.print(humidity, 1);
     lcd.print("%");
+
+    // --- Zapis na karte SD ---
+    logToSD(temperature, humidity);
   }
 
   // Odczekaj 2 sekundy do kolejnego pomiaru

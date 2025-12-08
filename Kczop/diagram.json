@@ -47,13 +47,13 @@
     ],
     "connections": [
         [
-            "esp:TX",
+            "esp:TX0",
             "$serialMonitor:RX",
             "",
             []
         ],
         [
-            "esp:RX",
+            "esp:RX0",
             "$serialMonitor:TX",
             "",
             []
