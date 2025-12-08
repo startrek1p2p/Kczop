@@ -9,6 +9,7 @@ import { createTemperatureGauge, createHumidityGauge } from "./gauges-definition
 const firebaseConfig = {
     apiKey: "AIzaSyC454ZiHeXjjwMkIYqdZrABAMnzZ30-rmQ",
     authDomain: "kczop-551b1.firebaseapp.com",
+    databaseURL: "https://kczop-551b1-default-rtdb.europe-west1.firebasedatabase.app",
     projectId: "kczop-551b1",
     storageBucket: "kczop-551b1.firebasestorage.app",
     messagingSenderId: "339602662416",
@@ -18,7 +19,8 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const database = getDatabase(app);
+// Explicitly target the europe-west1 RTDB instance to silence region warnings
+const database = getDatabase(app, "https://kczop-551b1-default-rtdb.europe-west1.firebasedatabase.app");
 
 // Fixed database path now that authentication is removed.
 // Update DATA_USER_PATH to point to the desired user node in your database.
@@ -72,6 +74,13 @@ let gaugeT, gaugeH;
 const initDashboard = () => {
     const dbRef = ref(database, READINGS_PATH);
     const chartRef = ref(database, CHART_RANGE_PATH);
+
+    // Debug: fetch once to verify path/data availability
+    get(dbRef).then((snap) => {
+        console.log('Init fetch READINGS_PATH data:', snap.val());
+    }).catch((err) => {
+        console.error('Init fetch error:', err);
+    });
 
     // Always show the dashboard now that auth is removed
     contentElement.style.display = 'block';

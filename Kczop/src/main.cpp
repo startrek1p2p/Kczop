@@ -6,7 +6,7 @@
 #include "DHT.h"
 #include <WiFi.h>
 #include <time.h> // *** NTP ***
-// #include <WiFiClientSecure.h>
+#include <WiFiClientSecure.h>
 // #include <FirebaseClient.h>
 #include <FirebaseESP32.h>
 
@@ -56,6 +56,23 @@ int count = 0;
 bool signupOK = false;
 bool authReady = false;
 
+String uid;
+
+// Database main path (to be updated in setup with the user UID)
+String databasePath;
+// Database child nodes
+String tempPath = "/temperature";
+String humPath = "/humidity";
+String timePath = "/timestamp";
+
+// Parent Node (to be updated in every loop)
+String parentPath;
+
+int timestamp;
+
+float temperature;
+float humidity;
+
 // --- Konfiguracja DHT22 ---
 #define DHTPIN 15     // pin danych czujnika DHT22
 #define DHTTYPE DHT22 // typ czujnika
@@ -74,10 +91,10 @@ LiquidCrystal_I2C lcd(LCD_ADDR, LCD_COLS, LCD_ROWS);
 // DI  -> GPIO 23 (MOSI)
 // SCK -> GPIO 18
 // DO  -> GPIO 19 (MISO)
-#define SD_CS_PIN 5
-#define SD_SCK_PIN 18
-#define SD_MISO_PIN 19
-#define SD_MOSI_PIN 23
+#define APP_SD_CS_PIN 5
+#define APP_SD_SCK_PIN 18
+#define APP_SD_MISO_PIN 19
+#define APP_SD_MOSI_PIN 23
 
 const char *SD_FILE_NAME = "/pomiary.txt";
 
@@ -124,9 +141,9 @@ void initTime() // *** NTP ***
 void initSD()
 {
   // Inicjalizacja SPI z konkretnymi pinami
-  SPI.begin(SD_SCK_PIN, SD_MISO_PIN, SD_MOSI_PIN, SD_CS_PIN);
+  SPI.begin(APP_SD_SCK_PIN, APP_SD_MISO_PIN, APP_SD_MOSI_PIN, APP_SD_CS_PIN);
 
-  if (!SD.begin(SD_CS_PIN))
+  if (!SD.begin(APP_SD_CS_PIN))
   {
     Serial.println("Blad inicjalizacji karty SD!");
     lcd.clear();
@@ -324,12 +341,28 @@ void setup()
   // Inicjalizacja karty SD
   initSD();
 }
+// Function that gets current epoch time
+unsigned long getTime()
+{
+  time_t now;
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo))
+  {
+    // Serial.println("Failed to obtain time");
+    return (0);
+  }
+  time(&now);
+  return now;
+}
 
 void loop()
 {
   // Odczyt z czujnika
-  float humidity = dht.readHumidity();
-  float temperature = dht.readTemperature(); // domyślnie *C
+  humidity = dht.readHumidity();
+  temperature = dht.readTemperature(); // domyślnie *C
+  // timestamp = getTime();
+  // Serial.print("time: ");
+  // Serial.println(timestamp);
 
   // Sprawdzenie czy odczyt sie udal
   if (isnan(humidity) || isnan(temperature))
@@ -351,6 +384,30 @@ void loop()
     Serial.print(humidity, 1);
     Serial.println(" %");
 
+    // zapisz dany uzytkownika po jego UID, zgodnie z regułami RTDB
+    if (authReady && Firebase.ready())
+    {
+      FirebaseJson json;
+      json.set("temperature", temperature);
+      json.set("humidity", humidity);
+
+      time_t now = time(nullptr);
+      if (now > 0)
+        json.set("timestamp", (int)now);
+
+      String path = "/UsersData/public/readings"; // zgodnie z frontendem
+      if (Firebase.pushJSON(firebaseData, path, json))
+        Serial.println("Reading sent");
+      else
+      {
+        Serial.println("Failed to send reading");
+        Serial.println(firebaseData.errorReason());
+      }
+    }
+    else
+    {
+      Serial.println("Firebase not ready yet - skipping send");
+    }
     // Wyswietlanie na LCD
     lcd.clear();
 
