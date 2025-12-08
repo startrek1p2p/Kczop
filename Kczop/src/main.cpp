@@ -6,10 +6,55 @@
 #include "DHT.h"
 #include <WiFi.h>
 #include <time.h> // *** NTP ***
+// #include <WiFiClientSecure.h>
+// #include <FirebaseClient.h>
+#include <FirebaseESP32.h>
+
+// Provide the token generation process info.
+#include "addons/TokenHelper.h"
+// Provide the RTDB payload printing info and other helper functions.
+#include "addons/RTDBHelper.h"
+
+#define ENABLE_USER_AUTH
+#define ENABLE_DATABASE
 
 // Insert your network credentials
 #define WIFI_SSID "Wokwi-GUEST"
 #define WIFI_PASSWORD ""
+
+#define Web_API_KEY "AIzaSyC454ZiHeXjjwMkIYqdZrABAMnzZ30-rmQ"
+#define DATABASE_URL "https://kczop-551b1-default-rtdb.europe-west1.firebasedatabase.app/"
+
+// Dane użytkownika do logowania/signup – bez spacji
+const char *USER_EMAIL = "dajcz.przemek@gmail.com";
+const char *USER_PASS = "!Qasde32w";
+
+// // User function
+// void processData(AsyncResult &aResult);
+
+// // Authentication
+// UserAuth user_auth(Web_API_KEY, USER_EMAIL);
+
+// // Firebase components
+// FirebaseApp app;
+// WiFiClientSecure ssl_client;
+// using AsyncClient = AsyncClientClass;
+// AsyncClient aClient(ssl_client);
+// RealtimeDatabase Database;
+
+// Timer variables for sending data every 10 seconds
+unsigned long lastSendTime = 0;
+const unsigned long sendInterval = 10000; // 10 seconds in milliseconds
+
+FirebaseData firebaseData;
+
+FirebaseConfig firebaseConfig;
+FirebaseAuth firebaseAuth;
+
+unsigned long sendDataPrevMillis = 0;
+int count = 0;
+bool signupOK = false;
+bool authReady = false;
 
 // --- Konfiguracja DHT22 ---
 #define DHTPIN 15     // pin danych czujnika DHT22
@@ -207,6 +252,57 @@ void setup()
   // *** NTP: inicjalizacja czasu po polaczeniu Wi-Fi ***
   initTime();
 
+  // // Configure SSL client
+  // ssl_client.setInsecure();
+  // ssl_client.setConnectionTimeout(1000);
+  // ssl_client.setHandshakeTimeout(5);
+
+  // // Initialize Firebase
+  // initializeApp(aClient, app, getAuth(user_auth), processData, "🔐 authTask");
+  // app.getApp<RealtimeDatabase>(Database);
+  // Database.url(DATABASE_URL);
+
+  //////////////
+
+  // Set Firebase configuration and authentication details
+  firebaseConfig.database_url = DATABASE_URL;
+  firebaseConfig.api_key = Web_API_KEY;
+  firebaseAuth.user.email = USER_EMAIL;
+  firebaseAuth.user.password = USER_PASS;
+
+  /* Sign up (lub zaloguj istniejącego) */
+  if (Firebase.signUp(&firebaseConfig, &firebaseAuth, USER_EMAIL, USER_PASS))
+  {
+    Serial.println("Signup ok");
+    signupOK = true;
+    authReady = true;
+  }
+  else
+  {
+    Serial.printf("Signup error: %s\n", firebaseConfig.signer.signupError.message.c_str());
+
+    // Jeśli konto już istnieje, spróbujemy zalogować się tymi danymi
+    if (String(firebaseConfig.signer.signupError.message.c_str()) == "EMAIL_EXISTS")
+    {
+      Serial.println("Konto istnieje – używam logowania na istniejące dane.");
+      authReady = true;
+    }
+  }
+
+  /* Assign the callback function for the long running token generation task */
+  firebaseConfig.token_status_callback = tokenStatusCallback; // see addons/TokenHelper.h
+
+  // Connect to Firebase tylko gdy mamy dane autoryzacyjne
+  if (authReady)
+  {
+    Firebase.begin(&firebaseConfig, &firebaseAuth);
+    Firebase.reconnectWiFi(true);
+  }
+  else
+  {
+    Serial.println("Brak autoryzacji - pomijam Firebase.begin()");
+  }
+
   // Inicjalizacja I2C
   Wire.begin(); // domyślne piny ESP32: SDA=21, SCL=22
 
@@ -278,3 +374,21 @@ void loop()
   // Odczekaj 2 sekundy do kolejnego pomiaru
   delay(2000);
 }
+
+// void processData(AsyncResult &aResult)
+// {
+//   if (!aResult.isResult())
+//     return;
+
+//   if (aResult.isEvent())
+//     Firebase.printf("Event task: %s, msg: %s, code: %d\n", aResult.uid().c_str(), aResult.eventLog().message().c_str(), aResult.eventLog().code());
+
+//   if (aResult.isDebug())
+//     Firebase.printf("Debug task: %s, msg: %s\n", aResult.uid().c_str(), aResult.debug().c_str());
+
+//   if (aResult.isError())
+//     Firebase.printf("Error task: %s, msg: %s, code: %d\n", aResult.uid().c_str(), aResult.error().message().c_str(), aResult.error().code());
+
+//   if (aResult.available())
+//     Firebase.printf("task: %s, payload: %s\n", aResult.uid().c_str(), aResult.c_str());
+// }
