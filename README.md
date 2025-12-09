@@ -45,3 +45,4 @@
 ## Dodatkowe uwagi
 - Przykladowe dane uwierzytelniajace (Wi-Fi, Firebase, email/haslo) sa jawne - zamien je na prywatne przed publikacja.
 - Plik `pomiary.txt` na karcie SD zapisuje temperature i wilgotnosc wraz z unifikowanym czasem (epoch z NTP lub czas od uruchomienia).
+- Prezentacja dzialania: `mov/Example.mp4` (lokalny film pokazujacy kompletne uruchomienie ukladu i dashboardu).
