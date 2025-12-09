@@ -1,3 +1,4 @@
+// https://kczop-551b1.web.app //
 #include <Arduino.h>
 #include <Wire.h>
 #include <SPI.h>
@@ -7,7 +8,6 @@
 #include <WiFi.h>
 #include <time.h> // *** NTP ***
 #include <WiFiClientSecure.h>
-// #include <FirebaseClient.h>
 #include <FirebaseESP32.h>
 
 // Provide the token generation process info.
@@ -26,52 +26,27 @@
 #define DATABASE_URL "https://kczop-551b1-default-rtdb.europe-west1.firebasedatabase.app/"
 
 // Dane użytkownika do logowania/signup – bez spacji
-const char *USER_EMAIL = "dajcz.przemek@gmail.com";
-const char *USER_PASS = "!Qasde32w";
-
-// // User function
-// void processData(AsyncResult &aResult);
-
-// // Authentication
-// UserAuth user_auth(Web_API_KEY, USER_EMAIL);
-
-// // Firebase components
-// FirebaseApp app;
-// WiFiClientSecure ssl_client;
-// using AsyncClient = AsyncClientClass;
-// AsyncClient aClient(ssl_client);
-// RealtimeDatabase Database;
-
-// Timer variables for sending data every 10 seconds
-unsigned long lastSendTime = 0;
-const unsigned long sendInterval = 10000; // 10 seconds in milliseconds
+const char *USER_EMAIL = "krz.czop@gmail.com";
+const char *USER_PASS = "12345678a";
 
 FirebaseData firebaseData;
 
 FirebaseConfig firebaseConfig;
 FirebaseAuth firebaseAuth;
 
-unsigned long sendDataPrevMillis = 0;
-int count = 0;
 bool signupOK = false;
 bool authReady = false;
 
 String uid;
 
-// Database main path (to be updated in setup with the user UID)
-String databasePath;
-// Database child nodes
-String tempPath = "/temperature";
-String humPath = "/humidity";
-String timePath = "/timestamp";
-
-// Parent Node (to be updated in every loop)
-String parentPath;
-
-int timestamp;
-
 float temperature;
 float humidity;
+bool hasReading = false;
+
+const unsigned long measureIntervalMs = 5000;
+const unsigned long sendIntervalMs = 30000;
+unsigned long lastMeasureMs = 0;
+unsigned long lastSendMs = 0;
 
 // --- Konfiguracja DHT22 ---
 #define DHTPIN 15     // pin danych czujnika DHT22
@@ -97,6 +72,7 @@ LiquidCrystal_I2C lcd(LCD_ADDR, LCD_COLS, LCD_ROWS);
 #define APP_SD_MOSI_PIN 23
 
 const char *SD_FILE_NAME = "/pomiary.txt";
+bool sdOk = false;
 
 // --- Konfiguracja NTP / czasu lokalnego (Polska) ---
 // *** NTP ***
@@ -146,6 +122,7 @@ void initSD()
   if (!SD.begin(APP_SD_CS_PIN))
   {
     Serial.println("Blad inicjalizacji karty SD!");
+    sdOk = false;
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("Blad karty SD");
@@ -153,6 +130,7 @@ void initSD()
   }
   else
   {
+    sdOk = true;
     Serial.println("Karta SD OK.");
 
     // Jeśli plik nie istnieje – utwórz go i dodaj nagłówek
@@ -178,13 +156,16 @@ void initSD()
   }
 }
 
-void logToSD(float temperature, float humidity)
+void logToSD(float temperature, float humidity, time_t epoch)
 {
+  if (!sdOk)
+    return;
+
   String line;
 
-  // *** NTP: proba pobrania aktualnego czasu ***
+  // Ujednolicony czas: ten sam epoch jak dla Firebase/web
   struct tm timeinfo;
-  if (getLocalTime(&timeinfo))
+  if (epoch > 0 && localtime_r(&epoch, &timeinfo))
   {
     char buf[80];
     // format: czas- data,godzina,minuta,sekunda
@@ -253,33 +234,46 @@ void setup()
   Serial.begin(115200);
   delay(500);
 
+  // Inicjalizacja I2C i LCD przed pierwszym uzyciem
+  Wire.begin(); // domyślne piny ESP32: SDA=21, SCL=22
+  lcd.init();
+  lcd.backlight();
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Start...");
+
   // Wi-Fi
+  lcd.setCursor(0, 0);
+  lcd.print("Laczenie z WiFi");
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.print("Connecting to Wi-Fi");
   while (WiFi.status() != WL_CONNECTED)
   {
     Serial.print(".");
+    lcd.setCursor(0, 1);
+    lcd.print(".");
     delay(300);
   }
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("WiFi OK:");
+  lcd.setCursor(0, 1);
+  lcd.print(WiFi.localIP());
   Serial.println();
   Serial.print("Connected with IP: ");
   Serial.println(WiFi.localIP());
   Serial.println();
 
   // *** NTP: inicjalizacja czasu po polaczeniu Wi-Fi ***
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Synchronizacja");
+  lcd.setCursor(0, 1);
+  lcd.print("czasu (NTP)...");
   initTime();
-
-  // // Configure SSL client
-  // ssl_client.setInsecure();
-  // ssl_client.setConnectionTimeout(1000);
-  // ssl_client.setHandshakeTimeout(5);
-
-  // // Initialize Firebase
-  // initializeApp(aClient, app, getAuth(user_auth), processData, "🔐 authTask");
-  // app.getApp<RealtimeDatabase>(Database);
-  // Database.url(DATABASE_URL);
-
-  //////////////
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Czas OK");
 
   // Set Firebase configuration and authentication details
   firebaseConfig.database_url = DATABASE_URL;
@@ -312,11 +306,24 @@ void setup()
   // Connect to Firebase tylko gdy mamy dane autoryzacyjne
   if (authReady)
   {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Logowanie");
+    lcd.setCursor(0, 1);
+    lcd.print("do Firebase...");
     Firebase.begin(&firebaseConfig, &firebaseAuth);
     Firebase.reconnectWiFi(true);
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Firebase OK");
   }
   else
   {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Brak autoryz.");
+    lcd.setCursor(0, 1);
+    lcd.print("Firebase pomin");
     Serial.println("Brak autoryzacji - pomijam Firebase.begin()");
   }
 
@@ -327,13 +334,6 @@ void setup()
   lcd.init();
   lcd.backlight();
 
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("ESP32 + DHT22");
-  lcd.setCursor(0, 1);
-  lcd.print("Start...");
-  delay(2000);
-
   // Inicjalizacja DHT
   dht.begin();
   Serial.println("Start pomiaru z DHT22.");
@@ -341,57 +341,66 @@ void setup()
   // Inicjalizacja karty SD
   initSD();
 }
-// Function that gets current epoch time
-unsigned long getTime()
-{
-  time_t now;
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo))
-  {
-    // Serial.println("Failed to obtain time");
-    return (0);
-  }
-  time(&now);
-  return now;
-}
-
 void loop()
 {
-  // Odczyt z czujnika
-  humidity = dht.readHumidity();
-  temperature = dht.readTemperature(); // domyślnie *C
-  // timestamp = getTime();
-  // Serial.print("time: ");
-  // Serial.println(timestamp);
+  unsigned long nowMs = millis();
+  time_t now = time(nullptr);
 
-  // Sprawdzenie czy odczyt sie udal
-  if (isnan(humidity) || isnan(temperature))
+  // Odczyt z czujnika co 5 s
+  if (nowMs - lastMeasureMs >= measureIntervalMs)
   {
-    Serial.println("Blad odczytu z DHT22!");
+    lastMeasureMs = nowMs;
+    float h = dht.readHumidity();
+    float t = dht.readTemperature(); // domyślnie *C
 
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("Blad odczytu");
-    lcd.setCursor(0, 1);
-    lcd.print("z DHT22...");
+    if (isnan(h) || isnan(t))
+    {
+      hasReading = false;
+      Serial.println("Blad odczytu z DHT22!");
+
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("Blad odczytu");
+      lcd.setCursor(0, 1);
+      lcd.print("z DHT22...");
+    }
+    else
+    {
+      humidity = h;
+      temperature = t;
+      hasReading = true;
+
+      Serial.print("Temperatura: ");
+      Serial.print(temperature, 1);
+      Serial.print(" *C  |  Wilgotnosc: ");
+      Serial.print(humidity, 1);
+      Serial.println(" %");
+
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("T:");
+      lcd.print(temperature, 1);
+      lcd.print((char)223); // znak stopnia
+      lcd.print("C");
+
+      lcd.setCursor(0, 1);
+      lcd.print("H:");
+      lcd.print(humidity, 1);
+      lcd.print("%");
+    }
   }
-  else
-  {
-    // Wyswietlanie na porcie szeregowym
-    Serial.print("Temperatura: ");
-    Serial.print(temperature, 1);
-    Serial.print(" *C  |  Wilgotnosc: ");
-    Serial.print(humidity, 1);
-    Serial.println(" %");
 
-    // zapisz dany uzytkownika po jego UID, zgodnie z regułami RTDB
+  // Wysyłka i zapis co 30 s
+  if (hasReading && (nowMs - lastSendMs >= sendIntervalMs))
+  {
+    lastSendMs = nowMs;
+
     if (authReady && Firebase.ready())
     {
       FirebaseJson json;
       json.set("temperature", temperature);
       json.set("humidity", humidity);
 
-      time_t now = time(nullptr);
       if (now > 0)
         json.set("timestamp", (int)now);
 
@@ -408,28 +417,11 @@ void loop()
     {
       Serial.println("Firebase not ready yet - skipping send");
     }
-    // Wyswietlanie na LCD
-    lcd.clear();
 
-    // Linia 1: temperatura
-    lcd.setCursor(0, 0);
-    lcd.print("T:");
-    lcd.print(temperature, 1);
-    lcd.print((char)223); // znak stopnia
-    lcd.print("C");
-
-    // Linia 2: wilgotnosc
-    lcd.setCursor(0, 1);
-    lcd.print("H:");
-    lcd.print(humidity, 1);
-    lcd.print("%");
-
-    // --- Zapis na karte SD ---
-    logToSD(temperature, humidity);
+    logToSD(temperature, humidity, now);
   }
 
-  // Odczekaj 2 sekundy do kolejnego pomiaru
-  delay(2000);
+  delay(200);
 }
 
 // void processData(AsyncResult &aResult)
