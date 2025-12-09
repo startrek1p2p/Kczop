@@ -9,6 +9,10 @@
 - `website/firebase.json` / `database.rules.json` - konfiguracja i reguly RTDB (domyslnie możliwy odczyt/zapis).
 - `sdk_tekst.txt` - szablon inicjalizacji Firebase SDK.
 
+
+[![Zobacz film](media/prev.png)](media/Example.mp4)
+
+
 ## Sprzet
 - ESP32 DevKit v1.
 - DHT22 -> data GPIO15, VCC VIN, GND GND.
