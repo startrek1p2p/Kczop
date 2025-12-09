@@ -44,6 +44,11 @@ const unsigned long measureIntervalMs = 5000; // czestotliwosc pomiaru DHT22
 const unsigned long sendIntervalMs = 30000;   // czestotliwosc wysylki do Firebase i zapisu na SD
 unsigned long lastMeasureMs = 0;
 unsigned long lastSendMs = 0;
+// --- Buzzer ---
+#define BUZZER_PIN 14
+const unsigned long buzzerIntervalMs = 500; // 500 ms dzwiek / 500 ms ciszy
+unsigned long lastBuzzerToggleMs = 0;
+bool buzzerState = false;
 
 // --- Konfiguracja DHT22 ---
 #define DHTPIN 15     // pin danych czujnika DHT22
@@ -238,6 +243,9 @@ void setup()
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("Start...");
+  // Buzzer
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, LOW);
 
   // Wi-Fi
   lcd.setCursor(0, 0);
@@ -378,6 +386,23 @@ void loop()
       lcd.print(humidity, 1);
       lcd.print("%");
     }
+  }
+
+  // Alarm buzzer: ponizej 5°C lub powyzej 45°C, puls 500 ms
+  bool alarmActive = hasReading && (temperature < 5.0 || temperature > 45.0);
+  if (alarmActive)
+  {
+    if (nowMs - lastBuzzerToggleMs >= buzzerIntervalMs)
+    {
+      lastBuzzerToggleMs = nowMs;
+      buzzerState = !buzzerState;
+      digitalWrite(BUZZER_PIN, buzzerState ? HIGH : LOW);
+    }
+  }
+  else
+  {
+    buzzerState = false;
+    digitalWrite(BUZZER_PIN, LOW);
   }
 
   // Wysylka i zapis co 30 s
