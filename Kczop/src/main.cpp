@@ -10,22 +10,19 @@
 #include <WiFiClientSecure.h>
 #include <FirebaseESP32.h>
 
-// Provide the token generation process info.
+// Informacje o generowaniu tokenu.
 #include "addons/TokenHelper.h"
-// Provide the RTDB payload printing info and other helper functions.
+// Pomocnicze funkcje do RTDB i wypisywania danych.
 #include "addons/RTDBHelper.h"
 
-#define ENABLE_USER_AUTH
-#define ENABLE_DATABASE
-
-// Insert your network credentials
+// Dane sieci Wi-Fi
 #define WIFI_SSID "Wokwi-GUEST"
 #define WIFI_PASSWORD ""
 
 #define Web_API_KEY "AIzaSyC454ZiHeXjjwMkIYqdZrABAMnzZ30-rmQ"
 #define DATABASE_URL "https://kczop-551b1-default-rtdb.europe-west1.firebasedatabase.app/"
 
-// Dane użytkownika do logowania/signup – bez spacji
+// Dane uzytkownika do logowania/signup - bez spacji
 const char *USER_EMAIL = "krz.czop@gmail.com";
 const char *USER_PASS = "12345678a";
 
@@ -43,8 +40,8 @@ float temperature;
 float humidity;
 bool hasReading = false;
 
-const unsigned long measureIntervalMs = 5000;
-const unsigned long sendIntervalMs = 30000;
+const unsigned long measureIntervalMs = 5000; // czestotliwosc pomiaru DHT22
+const unsigned long sendIntervalMs = 30000;   // czestotliwosc wysylki do Firebase i zapisu na SD
 unsigned long lastMeasureMs = 0;
 unsigned long lastSendMs = 0;
 
@@ -55,7 +52,7 @@ unsigned long lastSendMs = 0;
 DHT dht(DHTPIN, DHTTYPE);
 
 // --- Konfiguracja LCD I2C ---
-#define LCD_ADDR 0x27 // jeśli nie działa, spróbuj 0x3F
+#define LCD_ADDR 0x27 // jesli nie dziala, sprobuj 0x3F
 #define LCD_COLS 16
 #define LCD_ROWS 2
 
@@ -78,7 +75,7 @@ bool sdOk = false;
 // *** NTP ***
 const char *ntpServer = "pool.ntp.org";
 const long gmtOffset_sec = 3600;  // UTC+1
-const int daylightOffset_sec = 0; // możesz ustawić 3600 jeśli chcesz na stałe +2h
+const int daylightOffset_sec = 0; // mozesz ustawic 3600 jesli chcesz na stale +2h
 
 void initTime() // *** NTP ***
 {
@@ -133,13 +130,13 @@ void initSD()
     sdOk = true;
     Serial.println("Karta SD OK.");
 
-    // Jeśli plik nie istnieje – utwórz go i dodaj nagłówek
+    // Jesli plik nie istnieje - utworz go i dodaj naglowek
     if (!SD.exists(SD_FILE_NAME))
     {
       File file = SD.open(SD_FILE_NAME, FILE_WRITE);
       if (file)
       {
-        // zaktualizowany nagłówek z datą
+        // Zaktualizowany naglowek z data
         file.println("czas- data, godzina, minuta, sekunda, Temperatura[C], Wilgotnosc[%]");
         file.close();
         Serial.println("Utworzono plik pomiary.txt z naglowkiem.");
@@ -181,7 +178,7 @@ void logToSD(float temperature, float humidity, time_t epoch)
   }
   else
   {
-    // fallback jeśli NTP nie zadziałało – czas od startu
+    // Fallback: gdy NTP nie dziala, uzyj czasu od startu
     unsigned long totalSeconds = millis() / 1000;
     unsigned long seconds = totalSeconds % 60;
     unsigned long minutes = (totalSeconds / 60) % 60;
@@ -212,7 +209,7 @@ void logToSD(float temperature, float humidity, time_t epoch)
   File file = SD.open(SD_FILE_NAME, FILE_APPEND);
   if (!file)
   {
-    // Jesli FILE_APPEND zawiedzie (np. plik nie istnieje) – sprobuj FILE_WRITE
+    // Jesli FILE_APPEND zawiedzie (np. plik nie istnieje) - sprobuj FILE_WRITE
     file = SD.open(SD_FILE_NAME, FILE_WRITE);
   }
 
@@ -235,7 +232,7 @@ void setup()
   delay(500);
 
   // Inicjalizacja I2C i LCD przed pierwszym uzyciem
-  Wire.begin(); // domyślne piny ESP32: SDA=21, SCL=22
+  Wire.begin(); // domyslne piny ESP32: SDA=21, SCL=22
   lcd.init();
   lcd.backlight();
   lcd.clear();
@@ -275,13 +272,13 @@ void setup()
   lcd.setCursor(0, 0);
   lcd.print("Czas OK");
 
-  // Set Firebase configuration and authentication details
+  // Konfiguracja polaczenia z Firebase i danych uwierzytelniajacych
   firebaseConfig.database_url = DATABASE_URL;
   firebaseConfig.api_key = Web_API_KEY;
   firebaseAuth.user.email = USER_EMAIL;
   firebaseAuth.user.password = USER_PASS;
 
-  /* Sign up (lub zaloguj istniejącego) */
+  /* Rejestracja lub logowanie istniejacego uzytkownika */
   if (Firebase.signUp(&firebaseConfig, &firebaseAuth, USER_EMAIL, USER_PASS))
   {
     Serial.println("Signup ok");
@@ -292,7 +289,7 @@ void setup()
   {
     Serial.printf("Signup error: %s\n", firebaseConfig.signer.signupError.message.c_str());
 
-    // Jeśli konto już istnieje, spróbujemy zalogować się tymi danymi
+    // Jesli konto juz istnieje, sprobuje zalogowac sie tymi danymi
     if (String(firebaseConfig.signer.signupError.message.c_str()) == "EMAIL_EXISTS")
     {
       Serial.println("Konto istnieje – używam logowania na istniejące dane.");
@@ -300,10 +297,10 @@ void setup()
     }
   }
 
-  /* Assign the callback function for the long running token generation task */
-  firebaseConfig.token_status_callback = tokenStatusCallback; // see addons/TokenHelper.h
+  /* Callback statusu tokenu (generowanie dlugotrwale) */
+  firebaseConfig.token_status_callback = tokenStatusCallback; // patrz addons/TokenHelper.h
 
-  // Connect to Firebase tylko gdy mamy dane autoryzacyjne
+  // Polacz z Firebase tylko gdy mamy dane autoryzacyjne
   if (authReady)
   {
     lcd.clear();
@@ -327,13 +324,6 @@ void setup()
     Serial.println("Brak autoryzacji - pomijam Firebase.begin()");
   }
 
-  // Inicjalizacja I2C
-  Wire.begin(); // domyślne piny ESP32: SDA=21, SCL=22
-
-  // Inicjalizacja LCD
-  lcd.init();
-  lcd.backlight();
-
   // Inicjalizacja DHT
   dht.begin();
   Serial.println("Start pomiaru z DHT22.");
@@ -351,7 +341,7 @@ void loop()
   {
     lastMeasureMs = nowMs;
     float h = dht.readHumidity();
-    float t = dht.readTemperature(); // domyślnie *C
+    float t = dht.readTemperature();
 
     if (isnan(h) || isnan(t))
     {
@@ -390,7 +380,7 @@ void loop()
     }
   }
 
-  // Wysyłka i zapis co 30 s
+  // Wysylka i zapis co 30 s
   if (hasReading && (nowMs - lastSendMs >= sendIntervalMs))
   {
     lastSendMs = nowMs;
@@ -423,21 +413,3 @@ void loop()
 
   delay(200);
 }
-
-// void processData(AsyncResult &aResult)
-// {
-//   if (!aResult.isResult())
-//     return;
-
-//   if (aResult.isEvent())
-//     Firebase.printf("Event task: %s, msg: %s, code: %d\n", aResult.uid().c_str(), aResult.eventLog().message().c_str(), aResult.eventLog().code());
-
-//   if (aResult.isDebug())
-//     Firebase.printf("Debug task: %s, msg: %s\n", aResult.uid().c_str(), aResult.debug().c_str());
-
-//   if (aResult.isError())
-//     Firebase.printf("Error task: %s, msg: %s, code: %d\n", aResult.uid().c_str(), aResult.error().message().c_str(), aResult.error().code());
-
-//   if (aResult.available())
-//     Firebase.printf("task: %s, payload: %s\n", aResult.uid().c_str(), aResult.c_str());
-// }
