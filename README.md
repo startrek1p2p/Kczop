@@ -43,6 +43,11 @@
 - Domyslne reguly RTDB w `website/database.rules.json` pozwalają na odczyt/zapis.
 - Hostowanie statyczne np. przez Firebase Hosting: `firebase deploy --only hosting` (z katalogu `website` po konfiguracji CLI) lub lokalne `firebase serve`.
 
+## CI / GitHub Actions
+- Workflow: `.github/workflows/pio-build.yml`.
+- Wyzwalacze: `push` i `pull_request` na galezie `main`/`master`.
+- Kroki: checkout, Python 3.11, cache `~/.platformio`, instalacja PlatformIO (`pip install platformio`), build `pio run -d Kczop`.
+
 ### Konfiguracja frontendu
 1. Upewnij sie, ze reguly bazy pozwalaja na odczyt/zapis z ESP32 i aplikacji www.
 
