@@ -11,6 +11,7 @@
 
 
 [![Zobacz film](media/prev.png)](media/Example.mp4)
+Demo online: https://kczop-551b1.web.app
 
 
 ## Sprzet
